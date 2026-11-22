@@ -25,6 +25,16 @@ Pour tester une API déployée : `API_URL=https://mon-api.exemple python test_ap
 
 Erreurs : `400` si le nombre de pixels est différent de 784, `422` si le JSON est mal formé.
 
+## Déployer sur Streamlit Community Cloud
+
+1. share.streamlit.io → **Create app** → choisir ce dépôt, branche `main`, fichier `streamlit_app.py`.
+2. Dans *Advanced settings*, choisir Python 3.12.
+3. Déployer.
+
+Streamlit Cloud ne lance que l'app Streamlit. Si aucune API n'est joignable (ni `API_URL`, ni port 8000),
+`streamlit_app.py` démarre lui-même `app.py` avec Uvicorn dans un thread : le front appelle quand même
+la vraie route `POST /predict`. Pour viser une API hébergée ailleurs, définir le secret/variable `API_URL`.
+
 ## Déployer avec Docker
 
 ```bash
