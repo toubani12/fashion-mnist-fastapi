@@ -3,8 +3,12 @@ tensorflow-cpu>=2.16; sys_platform == "linux"
 fastapi>=0.115
 uvicorn[standard]>=0.30
 pydantic>=2
+python-multipart
 numpy
 requests
+httpx
+httpx2
 matplotlib
 streamlit
 pillow
+pillow-heif

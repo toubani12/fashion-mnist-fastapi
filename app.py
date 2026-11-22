@@ -3,8 +3,10 @@ import time
 
 import numpy as np
 import tensorflow as tf
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
+
+from preprocessing import to_fashion_mnist
 
 CLASS_NAMES = [
     "T-shirt/top", "Trouser", "Pullover", "Dress", "Coat",
@@ -59,11 +61,38 @@ def health():
     }
 
 
+def run_inference(image):
+    """image : tableau (28, 28) float32, pixels déjà dans [0, 1]."""
+    batch = image.reshape(1, 28, 28)
+    start = time.perf_counter()
+    logits = model(batch, training=False)
+    latency_ms = (time.perf_counter() - start) * 1000
+    probabilities = tf.nn.softmax(logits, axis=1).numpy()[0]
+    return probabilities, latency_ms
+
+
+def format_result(probabilities, latency_ms, top_k=None):
+    class_id = int(np.argmax(probabilities))
+    result = {
+        "class_id": class_id,
+        "class_name": CLASS_NAMES[class_id],
+        "confidence": round(float(probabilities[class_id]), 4),
+        "latency_ms": round(latency_ms, 2),
+    }
+    if top_k:
+        order = np.argsort(probabilities)[::-1][:top_k]
+        result["top_k"] = [
+            {"class_id": int(i), "class_name": CLASS_NAMES[i], "probability": round(float(probabilities[i]), 4)}
+            for i in order
+        ]
+    return result
+
+
 @app.post(
     "/predict",
     responses={400: {"description": "L'entrée ne contient pas exactement 784 pixels"}},
 )
-def predict(data: ImageInput):
+def predict(data: ImageInput, top_k: int | None = Query(None, ge=1, le=10, description="Optionnel : renvoie aussi les k classes les plus probables")):
     # 1-2. la liste "pixels" doit contenir exactement 784 valeurs
     if len(data.pixels) != 784:
         raise HTTPException(
@@ -81,22 +110,26 @@ def predict(data: ImageInput):
     if image.max() > 1.0:
         image = image / 255.0
 
-    # 6 + 10. inférence avec training=False, latence mesurée autour de l'appel
-    start = time.perf_counter()
-    logits = model(image, training=False)
-    latency_ms = (time.perf_counter() - start) * 1000
-
-    # 7. logits -> probabilités
-    probabilities = tf.nn.softmax(logits, axis=1).numpy()[0]
-
-    # 8-9. classe la plus probable et confiance
-    class_id = int(np.argmax(probabilities))
-    confidence = float(probabilities[class_id])
+    # 6 à 10. inférence (training=False), softmax, classe, confiance, latence
+    probabilities, latency_ms = run_inference(image)
 
     # 11. réponse JSON
-    return {
-        "class_id": class_id,
-        "class_name": CLASS_NAMES[class_id],
-        "confidence": round(confidence, 4),
-        "latency_ms": round(latency_ms, 2),
-    }
+    return format_result(probabilities, latency_ms, top_k)
+
+
+@app.post(
+    "/predict/image",
+    responses={400: {"description": "Fichier illisible ou qui n'est pas une image"}},
+)
+async def predict_image(file: UploadFile = File(..., description="Photo d'un vêtement (JPG, PNG, WEBP…)")):
+    """Extension : reçoit une vraie photo, l'adapte au format Fashion-MNIST
+    (preprocessing.py) puis applique la même inférence que /predict."""
+    data = await file.read()
+    try:
+        pixels = to_fashion_mnist(data)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Le fichier envoyé n'est pas une image lisible.")
+    probabilities, latency_ms = run_inference(pixels.astype(np.float32) / 255.0)
+    result = format_result(probabilities, latency_ms, top_k=3)
+    result["preview"] = pixels.reshape(-1).tolist()  # l'image 28×28 réellement vue par le modèle
+    return result
