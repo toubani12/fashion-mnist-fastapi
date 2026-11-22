@@ -1,0 +1,10 @@
+tensorflow>=2.16; sys_platform != "linux"
+tensorflow-cpu>=2.16; sys_platform == "linux"
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2
+numpy
+requests
+matplotlib
+streamlit
+pillow
