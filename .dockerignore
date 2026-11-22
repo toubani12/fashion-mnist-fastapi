@@ -1,0 +1,7 @@
+__pycache__/
+*.log
+captures/
+resultats.json
+test_output.txt
+compte_rendu.pdf
+*.zip

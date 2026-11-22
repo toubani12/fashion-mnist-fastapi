@@ -1,0 +1,19 @@
+services:
+  api:
+    build: .
+    image: fashion-mnist-api
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  front:
+    image: fashion-mnist-api
+    command: streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
+    environment:
+      API_URL: http://api:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
