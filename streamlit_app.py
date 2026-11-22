@@ -11,13 +11,50 @@ import requests
 import streamlit as st
 from PIL import Image, ImageOps
 
-API_URL = os.environ.get("API_URL", "http://127.0.0.1:8000").rstrip("/")
+LOCAL_API = "http://127.0.0.1:8000"
 DATA_DIR = Path(__file__).resolve().parent / "data"
 CLASS_NAMES = ["T-shirt/top", "Trouser", "Pullover", "Dress", "Coat",
                "Sandal", "Shirt", "Sneaker", "Bag", "Ankle boot"]
 
+def api_is_up(url):
+    try:
+        return requests.get(f"{url}/health", timeout=2).ok
+    except requests.RequestException:
+        return False
+
+
+@st.cache_resource(show_spinner="Démarrage de l'API FastAPI…")
+def ensure_api():
+    """Renvoie l'URL de l'API à utiliser.
+
+    - API_URL défini : on utilise cette API (Docker, VM, autre serveur) ;
+    - une API tourne déjà sur le port 8000 : on l'utilise ;
+    - sinon (Streamlit Community Cloud) : on lance app.py avec uvicorn dans un
+      thread, le front continue d'appeler la vraie route /predict.
+    """
+    if os.environ.get("API_URL"):
+        return os.environ["API_URL"].rstrip("/")
+    if api_is_up(LOCAL_API):
+        return LOCAL_API
+
+    import threading
+    import time
+
+    import uvicorn
+    from app import app as fastapi_app
+
+    server = uvicorn.Server(uvicorn.Config(fastapi_app, host="127.0.0.1", port=8000, log_level="warning"))
+    threading.Thread(target=server.run, daemon=True).start()
+    for _ in range(120):
+        if api_is_up(LOCAL_API):
+            break
+        time.sleep(0.5)
+    return LOCAL_API
+
+
 st.set_page_config(page_title="Fashion-MNIST", page_icon="👕", layout="centered")
 st.title("Fashion-MNIST · classification")
+API_URL = ensure_api()
 st.caption(f"API : {API_URL}")
 
 
